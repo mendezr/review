@@ -117,6 +117,7 @@ export class PrDetailCache {
 export function prDetailToLines(detail: PrDetail | undefined): string[] {
 	if (!detail) return ["(no PR selected)"];
 	const lines: string[] = [];
+	const inline = (value: string): string => sanitizeMarkdown(value).replace(/[\r\n]+/g, " ").trim();
 	const body = sanitizeMarkdown(detail.body);
 	if (body) {
 		lines.push(...body.split("\n"));
@@ -126,8 +127,9 @@ export function prDetailToLines(detail: PrDetail | undefined): string[] {
 	if (detail.comments.length > 0) {
 		lines.push("", "── Conversation ──", "");
 		for (const comment of detail.comments) {
-			const who = comment.author ? `@${comment.author}` : "?";
-			const stamp = comment.createdAt ? ` · ${comment.createdAt}` : "";
+			const author = inline(comment.author);
+			const who = author ? `@${author}` : "?";
+			const stamp = comment.createdAt ? ` · ${inline(comment.createdAt)}` : "";
 			lines.push(`${who}${stamp}`);
 			const bodyText = sanitizeMarkdown(comment.body);
 			lines.push(bodyText ? bodyText : "_(comment)_");
@@ -139,8 +141,10 @@ export function prDetailToLines(detail: PrDetail | undefined): string[] {
 	if (detail.reviews.length > 0) {
 		lines.push("── Reviews ──", "");
 		for (const review of detail.reviews) {
-			const who = review.author ? `@${review.author}` : "?";
-			lines.push(`[${review.state}] ${who}`);
+			const author = inline(review.author);
+			const who = author ? `@${author}` : "?";
+			const state = inline(review.state) || "unknown";
+			lines.push(`[${state}] ${who}`);
 			if (review.body) {
 				const bodyText = sanitizeMarkdown(review.body);
 				lines.push(bodyText ? bodyText : "_(no body)_");

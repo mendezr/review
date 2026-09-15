@@ -206,21 +206,22 @@ test("prDetailToLines renders the body and a sanitized conversation", () => {
 		body: "# The fix\n\nAdds a reader.\u001B[31m(bold)\u001B[0m",
 		author: "jorge",
 		comments: [
-			{ author: "ada", createdAt: "2026-01-01", body: "Nice.\n\n<script>alert(1)</script>" },
+			{ author: "ada\u001B[31m", createdAt: "2026-01-01\nforged", body: "Nice.\n\n<script>alert(1)</script>" },
 			{ author: "bob", createdAt: "2026-01-02", body: "Disagree" },
 		],
-		reviews: [{ author: "carol", state: "APPROVED", body: "LGTM" }],
+		reviews: [{ author: "carol\u001B[31m", state: "APPROVED\nforged", body: "LGTM" }],
 	};
 
 	const lines = prDetailToLines(detail);
 
 	const joined = lines.join("\n");
 	assert.ok(joined.includes("Adds a reader."), "body is rendered");
-	assert.ok(!joined.includes("\u001B["), "ANSI escapes are stripped from the body");
+	assert.ok(!joined.includes("\u001B["), "ANSI escapes are stripped from all remote fields");
+	assert.ok(joined.includes("@ada · 2026-01-01 forged"), "comment metadata stays on one sanitized line");
 	assert.ok(!joined.includes("<script>"), "script injection is stripped from comments");
 	assert.ok(joined.includes("@ada"), "the first comment author appears");
 	assert.ok(joined.includes("Disagree"), "the second comment body appears");
-	assert.ok(joined.includes("[APPROVED]"), "the review summary appears");
+	assert.ok(joined.includes("[APPROVED forged] @carol"), "review metadata appears safely");
 	assert.ok(!joined.includes("PR reader"), "the plain body is not mistaken for the title");
 });
 

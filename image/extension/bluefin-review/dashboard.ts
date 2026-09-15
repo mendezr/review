@@ -48,6 +48,7 @@ export const DASHBOARD_KEYS: readonly RailKey[] = [
 	{ chord: "H", label: "hive" },
 	{ chord: "L", label: "stage" },
 	{ chord: "d", label: "diff" },
+	{ chord: "v", label: "read" },
 	{ chord: "enter", label: "cite" },
 	{ chord: "o", label: "repo" },
 	{ chord: "/", label: "filter" },
@@ -63,6 +64,7 @@ const HELP: readonly string[] = [
 	"  tab              toggle pull requests and issues",
 	"  t                switch between queue and trace panes",
 	"  p                pause or resume future repository waves",
+	"  v                read the highlighted pull request",
 	"  h / l, ← / →     collapse or expand a trace span",
 	"  g / G            jump to first or last row",
 	"  H / L            toggle Hive-only / step Hive stages",
@@ -615,6 +617,9 @@ export class ReviewDashboard {
 			case "d":
 				this.executeKey("d");
 				break;
+			case "v":
+				this.executeKey("v");
+				break;
 			case "enter":
 				this.executeKey("enter");
 				break;
@@ -821,7 +826,8 @@ export class ReviewDashboard {
 			case "enter":
 				this.emitAction({ kind: "reference", item, items });
 				return;
-			case "p":
+			case "v":
+				if (item.type !== "pr") return;
 				this.showReader = true;
 				this.readerScroll = 0;
 				this.loadSelectedReaderDetail();
