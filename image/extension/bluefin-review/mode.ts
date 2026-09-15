@@ -36,6 +36,16 @@ export interface ReviewModeOptions {
  */
 export const BATCH_LIMIT = 25;
 
+const GITHUB_PULL_URL = /^https:\/\/github\.com\/([^/]+\/[^/]+)\/pull\/(\d+)(?:[/?#]|$)/;
+
+function pullRequestKey(item: HiveWorkItem): string | undefined {
+	const direct = GITHUB_PULL_URL.exec(item.url);
+	if (direct) return `${direct[1]}#${direct[2]}`;
+	if (!item.pr || item.pr.state.toLowerCase() !== "open") return undefined;
+	const linked = GITHUB_PULL_URL.exec(item.pr.url);
+	return linked ? `${linked[1]}#${linked[2]}` : `${item.repo}#${item.pr.number}`;
+}
+
 /** A contiguous slice of work targeting a single repository. */
 export interface RepositoryWave {
 	readonly repo: string;
@@ -73,7 +83,7 @@ export class ReviewMode {
 	items: QueueItem[] = [];
 	cursor = 0;
 	filter = "";
-	hiveOnly = true;
+	hiveOnly = false;
 	/** Hive triage stage the queue is drilled into; undefined is all of it. */
 	hiveLevel?: string;
 	queueError?: string;
@@ -81,6 +91,7 @@ export class ReviewMode {
 	fetchedAt = 0;
 	loading = false;
 	selectedKeys = new Set<string>();
+	currentUserLogin?: string;
 	viewMode: "default" | "ci" = "default";
 	isBlueberry = false;
 	paused = false;
@@ -94,6 +105,7 @@ export class ReviewMode {
 	private env: NodeJS.ProcessEnv;
 	private inflight?: AbortController;
 	private ranked: PrioritizedQueue = { items: [], priorities: new Map(), source: "local", hiveRanked: 0 };
+	private excludedKeys = new Set<string>();
 	skipRepos: Set<string>;
 
 	constructor(options: ReviewModeOptions) {
@@ -137,6 +149,29 @@ export class ReviewMode {
 		this.queueTruncated = false;
 	}
 
+	/** Remove items the workbench cannot act on from every visible/selected view. */
+	excludeItems(items: readonly QueueItem[]): void {
+		if (items.length === 0) return;
+		const excluded = new Set(items.map(itemKey));
+		this.items = this.items.filter((item) => !excluded.has(itemKey(item)));
+		for (const key of excluded) this.selectedKeys.delete(key);
+		this.cursor = Math.min(this.cursor, Math.max(0, this.visibleItems().length - 1));
+		this.reprioritize();
+	}
+
+	private excludeUnsupportedPullRequests(items: readonly QueueItem[]): QueueItem[] {
+		if (this.queueMode !== "prs") return [...items];
+		const supported: QueueItem[] = [];
+		for (const item of items) {
+			if ((item.workflowFiles?.length ?? 0) > 0 || item.changedFilesComplete === false) {
+				this.excludedKeys.add(itemKey(item));
+				continue;
+			}
+			supported.push(item);
+		}
+		return supported;
+	}
+
 	/** Why this item sits where it sits. */
 	priorityFor(item: QueueItem): Priority | undefined {
 		return this.ranked.priorities.get(itemKey(item));
@@ -162,7 +197,11 @@ export class ReviewMode {
 	 * refetch, a hub poll, a new receipt on disk — ends by calling it.
 	 */
 	reprioritize(now = Date.now()): void {
-		this.ranked = prioritize(this.items, { hive: this.hive, now });
+		this.ranked = prioritize(this.items, {
+			hive: this.hive,
+			now,
+			currentUserLogin: this.currentUserLogin,
+		});
 	}
 
 	/**
@@ -392,6 +431,27 @@ export class ReviewMode {
 		return this.visibleItems().filter((item) => this.selectedKeys.has(`${item.repo}#${item.id}`));
 	}
 
+	/**
+	 * Items available for slay execution: chosen items first, then visible items,
+	 * falling back to unranked items in local priority order when the Hive-only
+	 * filter leaves zero items.
+	 */
+	slayableItems(limit = BATCH_LIMIT): QueueItem[] {
+		const chosen = this.chosenItems();
+		if (chosen.length > 0) return chosen.slice(0, limit);
+		const visible = this.visibleItems();
+		if (visible.length > 0) return visible.slice(0, limit);
+		let base = this.ranked.items.length === this.items.length ? this.ranked.items : this.items;
+		if (this.skipRepos.size > 0) {
+			base = base.filter((item) => {
+				const repoLower = item.repo.toLowerCase();
+				const shortName = repoLower.includes("/") ? repoLower.split("/")[1]! : repoLower;
+				return !this.skipRepos.has(repoLower) && !this.skipRepos.has(shortName);
+			});
+		}
+		return base.slice(0, limit);
+	}
+
 
 
 	/**
@@ -427,6 +487,7 @@ export class ReviewMode {
 		this.inflight?.abort();
 		const controller = new AbortController();
 		this.inflight = controller;
+		this.excludedKeys.clear();
 		this.loading = true;
 
 		try {
@@ -458,7 +519,7 @@ export class ReviewMode {
 			this.queueTruncated = result.truncated === true;
 			this.fetchedAt = result.fetchedAt;
 			const previousKey = this.selectedKey();
-			this.items = [...result.items, ...missing];
+			this.items = this.excludeUnsupportedPullRequests([...result.items, ...missing]);
 			this.reprioritize();
 			if (previousKey) {
 				const index = this.visibleItems().findIndex((item) => itemKey(item) === previousKey);
@@ -479,6 +540,20 @@ export class ReviewMode {
 	 * Scope is respected: a repository-scoped queue stays that repository's, so
 	 * asking for one project never drags in another project's Hive work.
 	 */
+	private hiveKeysForMode(): string[] {
+		const keys = new Set<string>();
+		for (const item of this.hive.items) {
+			if (this.queueMode === "issues") {
+				if (!GITHUB_PULL_URL.test(item.url) && this.inScope(item.key) && !this.excludedKeys.has(item.key)) keys.add(item.key);
+				continue;
+			}
+
+			const key = pullRequestKey(item);
+			if (key && this.inScope(key) && !this.excludedKeys.has(key)) keys.add(key);
+		}
+		return [...keys];
+	}
+
 	private async missingHiveWork(
 		fetched: readonly QueueItem[],
 		options: FetchOptions,
@@ -486,7 +561,7 @@ export class ReviewMode {
 	): Promise<QueueItem[]> {
 		if (this.inflight !== controller || controller.signal.aborted || !this.hive.online) return [];
 		const present = new Set(fetched.map(itemKey));
-		const wanted = [...this.hive.ranks.keys()].filter((key) => !present.has(key) && this.inScope(key));
+		const wanted = this.hiveKeysForMode().filter((key) => !present.has(key));
 		if (wanted.length === 0) return [];
 		const result = await fetchItemsByKey(wanted, this.queueMode, options);
 		if (this.inflight !== controller || controller.signal.aborted) return [];
@@ -499,16 +574,18 @@ export class ReviewMode {
 	}
 
 	/**
-	 * How much of Hive's queue this session can actually act on.
+	 * How much of Hive's mode-matching queue this session can actually act on.
 	 *
-	 * `total` counts the work Hive ranked for this scope; `present` counts what
-	 * reached the queue. A gap is real — a closed item, another kind, a
-	 * repository the token cannot read — and saying so is the difference between
-	 * a short queue and a queue that lost work.
+	 * Issue mode covers Hive's issue keys. Pull-request mode covers direct Hive
+	 * pull requests, explicit open linked pull requests, and pull requests the
+	 * GitHub search already linked to ranked issues through closing references.
 	 */
 	hiveCoverage(): { present: number; total: number } {
-		const total = [...this.hive.ranks.keys()].filter((key) => this.inScope(key)).length;
-		return { present: this.hiveRankedCount(), total };
+		const expected = new Set(this.hiveKeysForMode());
+		for (const item of this.items) {
+			if (this.priorityFor(item)?.source === "hive" && !this.excludedKeys.has(itemKey(item))) expected.add(itemKey(item));
+		}
+		return { present: this.hiveRankedCount(), total: expected.size };
 	}
 
 

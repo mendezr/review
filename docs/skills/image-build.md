@@ -1,6 +1,6 @@
 ---
 name: image-build
-version: "3.0"
+version: "3.2"
 last_updated: 2026-09-14
 id: image-build
 one_line_purpose: Build and pin the OMP review and contributor images.
@@ -37,8 +37,9 @@ model-specific runtime. Both OCI images leave model and effort selection to OMP.
    in an image layer.
 4. Do not add package managers or duplicate a tool already present in the pinned
    FSDK closure.
-5. The review appliance carries OMP, its extension, GitHub CLI, and the minimal
-   shell/git/Python closure required by OMP tools.
+5. The review appliance carries OMP, its extension, GitHub CLI, the minimal
+   shell/git/Python closure required by OMP tools, and the pinned FSDK builder's
+   `actionlint`, `shellcheck`, `yq`, `jq`, and `just` validators.
 6. The contributor image carries OMP, Hive's pinned relay/runtime, Node with the
    locked `ws` module, GitHub CLI, tmux, and the minimal FSDK closure.
 7. The contributor entrypoint accepts only `AGENT_BACKEND=omp`; provider, model,
@@ -50,6 +51,14 @@ model-specific runtime. Both OCI images leave model and effort selection to OMP.
    Do not fork or locally patch its runtime files.
 10. Generate SPDX manifests from resolved build arguments and keep build-only
     generators out of the final filesystem.
+11. Version derivation rejects malformed or missing revision/base inputs,
+    preserves decimal `08`/`09` revisions, and keeps both image series aligned.
+12. Execute every staged command in the built image. If an allowlisted path is
+    a wrapper, stage and verify its real executable target as part of the same
+    closure; file presence is not runtime evidence.
+13. Give Apptainer workloads instance-scoped disk-backed scratch storage.
+    `--containall` otherwise supplies a 64 MiB `/tmp`, which is too small for
+    repository clones and archive inspection.
 
 ## Pin maintenance
 
@@ -64,6 +73,7 @@ bash tests/appliance-contract.sh
 bash tests/contribute-contract.sh
 python3 tests/appliance_sbom_contract.py
 python3 tests/contribute_sbom_contract.py
+bash tests/version-derivation.sh
 git diff --check
 ```
 

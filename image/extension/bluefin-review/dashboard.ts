@@ -14,7 +14,7 @@
 import { GLYPH, SPINNER_TICK_MS, type Painter, formatDuration, statusIcon, statusRole } from "./glyphs.ts";
 import type { QueueItem, QueueMode } from "./github.ts";
 import { type KeyMatcher, canonicalKey, rawKeyMatcher } from "./keys.ts";
-import { type ReviewMode, ciGlyph } from "./mode.ts";
+import { BATCH_LIMIT, type ReviewMode, ciGlyph } from "./mode.ts";
 import { type RailKey, keymapBar, orderSourceLabel, priorityChip, workbenchProgressBar } from "./rail.ts";
 import { type RenderedRow, type Span, defaultExpanded, findSpan, hasChildren, renderSpanTree, visibleSpanIds } from "./trace.ts";
 import { fitToWidth, truncateToWidth, visibleWidth } from "./width.ts";
@@ -30,10 +30,12 @@ export type DashboardAction =
 	| { kind: "scope" }
 	| { kind: "read_pr"; item: QueueItem }
 	| { kind: "open_browser"; item: QueueItem }
-	| { kind: "ci_mode" };
+	| { kind: "ci_mode" }
+	| { kind: "request_reviewer"; item: QueueItem; items?: QueueItem[] };
 
 export const DASHBOARD_KEYS: readonly RailKey[] = [
 	{ chord: "s", label: "slay" },
+	{ chord: "alt+s", label: "autoslay" },
 	{ chord: "c", label: "comment" },
 	{ chord: "f", label: "fix" },
 	{ chord: "space", label: "select" },
@@ -70,7 +72,8 @@ const HELP: readonly string[] = [
 	"  H / L            toggle Hive-only / step Hive stages",
 	"  o / r            change repository / refetch",
 	"  /                filter by title, repo, author, label, or number",
-	"  s                slay selected item(s) through mass autoreview",
+	"  s                review, repair, and land selected pull requests",
+	"  alt+s            autoslay the visible queue through review, repair, and landing",
 	"  c                comment on selected item(s)",
 	"  f                fix selected item(s) in isolated workspaces",
 	"  d                inspect bounded diff evidence",
@@ -567,6 +570,9 @@ export class ReviewDashboard {
 			case "s":
 				this.executeKey("s");
 				break;
+			case "alt+s":
+				this.executeKey("alt+s");
+				break;
 			case "c":
 				this.executeKey("c");
 				break;
@@ -742,6 +748,13 @@ export class ReviewDashboard {
 				this.mode.selectCurrentRepository();
 				this.tui.requestRender();
 				return;
+			case "alt+s":
+			case "\u001bs": {
+				const items = this.mode.slayableItems(BATCH_LIMIT);
+				if (items.length === 0) return;
+				this.emitAction({ kind: "slay", item: items[0]!, items: items.length > 0 ? items : undefined });
+				return;
+			}
 			case "/":
 				this.filtering = true;
 				this.filterDraft = this.mode.filter;
@@ -815,7 +828,6 @@ export class ReviewDashboard {
 			case "c":
 				this.emitAction({ kind: "comment", item, items });
 				return;
-				return;
 			case "f":
 				this.emitAction({ kind: "fix", item, items });
 				return;
@@ -835,6 +847,9 @@ export class ReviewDashboard {
 			case "C":
 				this.mode.toggleViewMode();
 				this.tui.requestRender();
+				return;
+			case "R":
+				this.done({ kind: "request_reviewer", item, items });
 				return;
 			default:
 				break;

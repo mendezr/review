@@ -38,10 +38,16 @@ export interface QueueItem {
 	changedFiles?: number;
 	/** Exact head of the pull request at queue-read time. */
 	headSha?: string;
+	/** GitHub accepted this pull request into its auto-merge lifecycle. */
+	autoMergeEnabled?: boolean;
 	/** `owner/repo#number` of every issue this pull request closes. */
 	closingIssues?: string[];
 	/** `owner/repo#number` of merged PRs that reference or close this issue. */
 	closedByPrs?: string[];
+	/** Changed workflow files reported by GitHub for exclusion from slay/review. */
+	workflowFiles?: string[];
+	/** Whether GitHub returned the complete changed-file list. */
+	changedFilesComplete?: boolean;
 }
 
 export interface QueueResult {
@@ -75,7 +81,22 @@ const PR_ITEM_FIELDS = `
 	deletions
 	changedFiles
 	headRefOid
-	commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
+	files(first: 100) {
+		pageInfo { hasNextPage }
+		nodes { path }
+	}
+	autoMergeRequest { enabledAt }
+	commits(last: 1) {
+		nodes {
+			commit {
+				statusCheckRollup { state }
+				checkSuites(first: 50) {
+					pageInfo { hasNextPage }
+					nodes { status conclusion }
+				}
+			}
+		}
+	}
 	closingIssuesReferences(first: 5) {
 		nodes { number repository { nameWithOwner } }
 	}
@@ -182,6 +203,7 @@ function headers(token?: string): Record<string, string> {
 	return value;
 }
 
+
 interface SearchNode {
 	number?: number;
 	title?: string;
@@ -194,10 +216,22 @@ interface SearchNode {
 	deletions?: number;
 	closed?: boolean;
 	changedFiles?: number;
+	autoMergeRequest?: { enabledAt?: string } | null;
 	author?: { login?: string } | null;
 	repository?: { nameWithOwner?: string } | null;
 	labels?: { nodes?: Array<{ name?: string }> } | null;
-	commits?: { nodes?: Array<{ commit?: { statusCheckRollup?: { state?: string } | null } }> } | null;
+	files?: { pageInfo?: { hasNextPage?: boolean }; nodes?: Array<{ path?: string }> } | null;
+	commits?: {
+		nodes?: Array<{
+			commit?: {
+				statusCheckRollup?: { state?: string } | null;
+				checkSuites?: {
+					pageInfo?: { hasNextPage?: boolean };
+					nodes?: Array<{ status?: string; conclusion?: string | null }>;
+				} | null;
+			};
+		}>;
+	} | null;
 	closingIssuesReferences?: { nodes?: Array<{ number?: number; repository?: { nameWithOwner?: string } | null }> } | null;
 	closedByPullRequestsReferences?: {
 		nodes?: Array<{
@@ -209,18 +243,23 @@ interface SearchNode {
 	} | null;
 }
 
-function toCiStatus(state?: string): CiStatus | undefined {
-	switch (state?.toUpperCase()) {
-		case "SUCCESS":
-			return "success";
-		case "FAILURE":
-		case "ERROR":
-			return "failure";
-		case undefined:
-			return undefined;
-		default:
-			return "pending";
-	}
+function toCiStatus(
+	state?: string,
+	checkSuites?: { pageInfo?: { hasNextPage?: boolean }; nodes?: Array<{ status?: string; conclusion?: string | null }> } | null,
+): CiStatus | undefined {
+	const rollup = state?.toUpperCase();
+	const suites = checkSuites?.nodes ?? [];
+	const failedSuite = suites.some((suite) => {
+		if (suite.status?.toUpperCase() !== "COMPLETED") return false;
+		const conclusion = suite.conclusion?.toUpperCase();
+		return conclusion !== undefined && !["SUCCESS", "NEUTRAL", "SKIPPED"].includes(conclusion);
+	});
+	if (failedSuite || rollup === "FAILURE" || rollup === "ERROR") return "failure";
+	const pendingSuite = checkSuites?.pageInfo?.hasNextPage === true
+		|| suites.some((suite) => suite.status?.toUpperCase() !== "COMPLETED" || !suite.conclusion);
+	if (pendingSuite || (rollup !== undefined && rollup !== "SUCCESS")) return "pending";
+	if (rollup === "SUCCESS" || suites.length > 0) return "success";
+	return undefined;
 }
 
 function toMergeState(value?: string | null): MergeState {
@@ -259,7 +298,10 @@ function toQueueItem(node: SearchNode, mode: QueueMode): QueueItem | undefined {
 		url: node.url ?? "",
 		updatedAt: Number.isNaN(updated) ? 0 : updated,
 		draft: node.isDraft === true,
-		ciStatus: toCiStatus(node.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state),
+		ciStatus: toCiStatus(
+			node.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state,
+			node.commits?.nodes?.[0]?.commit?.checkSuites,
+		),
 		mergeState: toMergeState(node.mergeable),
 		reviewState: toReviewState(node.reviewDecision),
 		labels: (node.labels?.nodes ?? []).map((label) => label.name ?? "").filter(Boolean),
@@ -267,6 +309,16 @@ function toQueueItem(node: SearchNode, mode: QueueMode): QueueItem | undefined {
 		deletions: node.deletions,
 		changedFiles: node.changedFiles,
 		headSha: node.headRefOid,
+		autoMergeEnabled: Boolean(node.autoMergeRequest?.enabledAt),
+		workflowFiles:
+			mode === "prs"
+				? (node.files?.nodes ?? []).map((file) => file.path ?? "").filter((path) => path.startsWith(".github/workflows/"))
+				: undefined,
+		changedFilesComplete:
+			mode === "prs" && node.files
+				? node.files.pageInfo?.hasNextPage !== true
+					&& (node.changedFiles === undefined || (node.files.nodes ?? []).length >= node.changedFiles)
+				: undefined,
 		closingIssues: (node.closingIssuesReferences?.nodes ?? [])
 			.map((reference) =>
 				reference.repository?.nameWithOwner && typeof reference.number === "number"

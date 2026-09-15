@@ -27,9 +27,9 @@ ARG FSDK_BASE_IMAGE=ghcr.io/projectbluefin/base:26.08@sha256:f4c4557fa9841639dfc
 ARG FSDK_BUILDER_IMAGE=ghcr.io/projectbluefin/lab-runner:26.08@sha256:5217c4e4ed0d89a801e1e64d45c1191a8525ccae8aed6e234cd44382e9b3a143
 
 # renovate: datasource=github-releases depName=can1357/oh-my-pi
-ARG OMP_VERSION=18.1.18
-ARG OMP_X86_64_SHA256=45421f9a5f112bc47cb9f77c4b4d7927631f8ff859624f821287ec854eb239fc
-ARG OMP_AARCH64_SHA256=1ae8273c231ceb88cebc9971901cf7f5d97ed4149cdc740a814f629cd2b4dcb2
+ARG OMP_VERSION=18.1.22
+ARG OMP_X86_64_SHA256=9ccddf1091e01e08fea1f8e1208f8901cc90d5d098b16581672eeab03f118b81
+ARG OMP_AARCH64_SHA256=62433d49063eed2e90d3cb14729b3a608d6665348f9fdddb8757680b026059ec
 # renovate: datasource=github-releases depName=cli/cli
 ARG GH_VERSION=2.97.0
 ARG GH_X86_64_SHA256=a2c9b8497e1f85b1ad0dfcb78b5a622e098801b8e461e459e88e1ee12f018112
@@ -83,10 +83,17 @@ RUN set -eu; \
     \
     rm -rf "$workdir"
 
-# The shell, git, and their library closure, staged out of the builder by an
-# explicit allowlist. Nothing is installed into the final image; it is assembled.
+# The shell, git, review validators, and their library closure are staged from
+# the pinned FSDK builder by an explicit allowlist. Nothing is installed into
+# the final image; it is assembled from binaries already present at that seam.
 COPY --chmod=0755 image/appliance/stage-runtime.sh /usr/local/libexec/stage-runtime
-RUN /usr/local/libexec/stage-runtime /out
+RUN /usr/local/libexec/stage-runtime /out \
+    /usr/sbin/actionlint \
+    /usr/sbin/shellcheck \
+    /usr/sbin/yq \
+    /usr/sbin/jq \
+    /usr/sbin/just \
+    /usr/sbin/openssl
 
 # The in-image SBOM. syft can only see package-manager metadata, and every
 # component of this image arrived as a release archive, so the archive
@@ -144,6 +151,9 @@ ENV HOME=/home/bluefin \
     XDG_CACHE_HOME=/home/bluefin/.cache \
     XDG_DATA_HOME=/home/bluefin/.local/share \
     XDG_STATE_HOME=/home/bluefin/.local/state \
+    GIT_CONFIG_COUNT=1 \
+    GIT_CONFIG_KEY_0=credential.https://github.com.helper \
+    GIT_CONFIG_VALUE_0="!/usr/bin/gh auth git-credential" \
     PATH=/usr/bin:/bin \
     SHELL=/usr/bin/bash \
     TERM=xterm-256color \
