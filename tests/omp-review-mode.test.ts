@@ -1111,7 +1111,7 @@ test("without Hive the queue stays in GitHub evidence order and remains descript
 	await mode.refreshQueue();
 	assert.equal(mode.visibleItems().length, 2);
 
-	assert.equal(mode.selected().id, 42, "browse-only mode preserves the fetched GitHub order");
+	assert.equal(mode.selected().id, 42, "unreachable-Hive mode preserves the fetched GitHub order");
 	assert.equal(mode.priorityFor(mode.selected()).category, "fix-ci", "categories remain descriptive");
 	assert.equal(mode.orderSource(), "local");
 
@@ -1251,7 +1251,7 @@ test("dashboard navigates, folds, filters, and returns actions", (t) => {
 	assert.ok(frame()[0].includes("HIVE WORKBENCH"));
 	for (const row of frame()) assert.ok(visibleWidth(row) <= 120, row);
 
-	assert.equal(mode.selected().id, 42, "browse-only mode preserves fetched order");
+	assert.equal(mode.selected().id, 42, "unreachable-Hive mode preserves fetched order");
 	dashboard.handleInput("j");
 	assert.equal(mode.selected().id, 7);
 	dashboard.handleInput("k");
@@ -1540,7 +1540,7 @@ test("without a hub the queue remains unranked in fetched order", () => {
 	assert.equal(ranked.priorities.get("projectbluefin/review#1").demotion, 1, "descriptive metadata may still mark a dependency bump");
 	assert.equal(categorize(queueItem({ type: "issue" }), { hive: EMPTY_HIVE, now }).category, "triage");
 });
-test("browse-only issue queues preserve fetched order and delineate repository transitions", () => {
+test("unreachable-Hive issue queues preserve fetched order and delineate repository transitions", () => {
 	const now = NOW;
 	const items = [
 		queueItem({ id: 201, type: "issue", repo: "projectbluefin/server", title: "server issue", updatedAt: now - 100 }),
