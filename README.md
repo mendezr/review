@@ -143,7 +143,7 @@ slash commands.
 | `alt+s` | Repair returned PRs first, then implement the visible issue backlog in bounded waves |
 | `alt+b` | Select / clear the focused repository group |
 | `f` | Fix selected items in isolated workspaces |
-| `d` | Inspect bounded diff evidence |
+| `d` | Inspect bounded evidence (PR diff, issue discussion) |
 | `p` | Pause / resume starting later repository waves |
 | `r` | Refetch GitHub and Hive projections |
 | `o` | Change repository or organization scope |
