@@ -20,6 +20,25 @@ Review gates required +2 reviews to merge, so a maintainer running both can neve
 
 What we have now:
 
+## Product boundary
+
+Review's core is GitHub-first. On any repository the operator can access, pull
+requests and issues are first-class objects, and the workbench offers each
+object only the actions its backend can run: PR review, diff, fix, and slay;
+issue inspection, implementation, and fix. A missing or unreachable Hive does
+not make the workbench browse-only — queue order falls back to GitHub and the
+authorized actions remain available.
+
+[Bluefin](https://projectbluefin.io) adds its doctrine, specialized reviewers,
+labels, conventions, and repository admission rules on top of that core.
+[Hive](https://hive.projectbluefin.io) adds ordering, claims, stages, curated
+knowledge, and contributor coordination. Neither is required for the core
+GitHub workflows: GitHub defines what work exists, Review defines what can be
+done with it, Hive may prioritize and coordinate it, and Bluefin may
+specialize its policy. The boundary and its follow-up work — including a
+GitHub-only mode that selects Hive or the plain GitHub toolchain — are tracked
+in [#591](https://github.com/projectbluefin/review/issues/591).
+
 ## Installation
 
 Install `bluefin-contributor-tools` in one command from the [Universal Blue experimental tap](https://github.com/ublue-os/homebrew-experimental-tap), which automatically trusts the formula:
