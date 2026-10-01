@@ -1,4 +1,7 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { promisify } from "node:util";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -85,14 +88,43 @@ export async function updateLockfileContent(source, fetchImpl = fetch) {
 	return reconstructed;
 }
 
-export async function syncRequirementsCiHashes({ root = process.cwd(), fetchImpl = fetch } = {}) {
+// Only pinned PyPI requirements cross into the resolver: never PR-controlled
+// index options, includes, local paths, URLs, or project configuration.
+export function compilerInput(source) {
+	const specs = [];
+	for (const line of source.split("\n")) {
+		if (!line.trim() || line.trim().startsWith("#") || /^\s+--hash=sha256:[0-9a-f]{64}(?:\s*\\)?\s*$/.test(line)) continue;
+		const requirement = parseRequirement(line);
+		if (!requirement || !/^[a-zA-Z0-9._,-]*$/.test(requirement.spec.match(/\[([^\]]*)\]/)?.[1] ?? "")) {
+			throw new Error(`${LOCKFILE}: cannot parse requirement line: ${line.trim()}`);
+		}
+		specs.push(requirement.spec);
+	}
+	if (specs.length === 0) throw new Error(`${LOCKFILE}: no pinned requirements`);
+	return specs.join("\n") + "\n";
+}
+
+export async function syncRequirementsCiHashes({ root = process.cwd(), run = promisify(execFile) } = {}) {
 	const path = join(root, LOCKFILE);
 	const source = await readFile(path, "utf8");
-	const updated = await updateLockfileContent(source, fetchImpl);
-	if (updated !== source) {
-		await writeFile(path, updated);
+	const input = compilerInput(source);
+	const temporary = await mkdtemp(join(tmpdir(), "requirements-ci-"));
+	try {
+		await writeFile(join(temporary, "requirements.in"), input);
+		await run("uv", [
+			"--no-config", "pip", "compile", "--no-sources",
+			"--only-binary", ":all:", "--default-index", "https://pypi.org/simple",
+			"--generate-hashes", "--python-version", "3.13", "--no-header", "--no-annotate",
+			"--output-file", "requirements.lock", "requirements.in",
+		], { cwd: temporary });
+		const updated = "# Pin pre-commit and dependencies with sha256 hashes for CI integrity verification.\n"
+			+ "# Compiled via: uv pip compile --generate-hashes --python-version 3.13\n"
+			+ await readFile(join(temporary, "requirements.lock"), "utf8");
+		if (updated !== source) await writeFile(path, updated);
+		return { path, updated: updated !== source };
+	} finally {
+		await rm(temporary, { recursive: true, force: true });
 	}
-	return { path, updated: updated !== source };
 }
 
 async function main() {
