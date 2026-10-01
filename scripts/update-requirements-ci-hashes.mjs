@@ -9,8 +9,14 @@ const LOCKFILE = "requirements-ci.lock";
 
 // The full requirement spec, minus the trailing line continuation: name,
 // optional extras, version, and an optional PEP 508 environment marker.
+// The marker is restricted to the PEP 508 marker charset -- identifiers,
+// version-ish literals, quotes, parentheses, and comparison operators -- so a
+// head-controlled tail after `;` cannot smuggle anything else (`:` and `/` of a
+// URL, `--index-url`'s argument, a `@` direct reference) past this parser and
+// into uv's requirements file. Anything outside that charset fails to match and
+// the line is refused rather than re-emitted.
 const REQUIREMENT_PATTERN =
-	/^(?<name>[a-zA-Z0-9._-]+)(?<extras>\[[^\]\n]*\])?\s*==\s*(?<version>[0-9][a-zA-Z0-9._!*+-]*)(?<marker>\s*;.*)?$/;
+	/^(?<name>[a-zA-Z0-9._-]+)(?<extras>\[[^\]\n]*\])?\s*==\s*(?<version>[0-9][a-zA-Z0-9._!*+-]*)(?<marker>\s*;[a-zA-Z0-9._'"()<>=!~+ \t-]*)?$/;
 
 // Parses one requirement line into the PyPI lookup key and the spec to re-emit.
 // `spec` is rebuilt rather than reused verbatim so the rewrite keeps extras and

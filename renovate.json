@@ -1,5 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "requirements-ci.lock has no postUpgradeTasks entry on purpose. Recompiling it needs `uv` on the post-upgrade PATH and the Renovate container does not provide it, so the task could only ever fail and record an artifact error on every PyPI bump. .github/workflows/renovate-hashes.yml repairs the branch on the pull request instead, where setup-uv installs uv; that is the only path that lands the resolution. Its commits are authored by github-actions[bot], listed in gitIgnoredAuthors below so Renovate does not read the repair as a manual edit and stop rebasing the branch. .github/workflows/renovate.yml still allowlists `node scripts/update-requirements-ci-hashes.mjs`; with no rule declaring it the entry matches nothing and is inert.",
   "extends": [
     "local>projectbluefin/renovate-config"
   ],
@@ -187,21 +188,6 @@
         ],
         "fileFilters": [
           "image/contribute/Containerfile"
-        ],
-        "executionMode": "branch"
-      }
-    },
-    {
-      "description": "Recompile requirements-ci.lock (transitive dependencies and sha256 hashes) when managed PyPI package versions change. This command needs `uv` on the post-upgrade PATH, which the Renovate container does not provide, so under the self-hosted Renovate that allowlists it (.github/workflows/renovate.yml) the task fails and leaves the bump alone. The organisation runner and the hosted app do not run it either. In every case .github/workflows/renovate-hashes.yml repairs the branch on the pull request, where setup-uv installs uv; that repair is the path that actually lands the resolution. The github-actions[bot] author above is that repair, which Renovate must not read as a manual edit.",
-      "matchDatasources": [
-        "pypi"
-      ],
-      "postUpgradeTasks": {
-        "commands": [
-          "node scripts/update-requirements-ci-hashes.mjs"
-        ],
-        "fileFilters": [
-          "requirements-ci.lock"
         ],
         "executionMode": "branch"
       }

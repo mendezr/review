@@ -58,9 +58,11 @@ repository out.
 The daily Renovate workflow tracks stable upstream releases (OMP, GitHub CLI,
 Node.js, and tmux) along with PyPI dependencies in `requirements-ci.lock`.
 Allowlisted tasks (`scripts/update-omp-pins.mjs`, `scripts/update-gh-pins.mjs`,
-`scripts/update-node-pins.mjs`, `scripts/update-tmux-pins.mjs`, and
-`scripts/update-requirements-ci-hashes.mjs`) synchronize version pins and verified
-per-architecture digests across Containerfiles and lockfile hashes.
+`scripts/update-node-pins.mjs`, and `scripts/update-tmux-pins.mjs`)
+synchronize version pins and verified
+per-architecture digests across Containerfiles. `requirements-ci.lock` is
+recompiled instead by `.github/workflows/renovate-hashes.yml` on the Renovate
+pull request, where `uv` is available; it has no post-upgrade task.
 After checks and OMP-specific automerge, the `main` push triggers the image
 publish workflow.
 

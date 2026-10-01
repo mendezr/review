@@ -95,7 +95,7 @@
         "hive"
       ],
       "description": "Use when maintaining the OMP contributor image, release pins, SBOM inputs, or multi-architecture publication workflows.",
-      "version": "3.8",
+      "version": "3.9",
       "last_updated": "2026-10-01",
       "doc_type": "procedure"
     },

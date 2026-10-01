@@ -1,6 +1,6 @@
 ---
 name: image-build
-version: "3.8"
+version: "3.9"
 last_updated: "2026-10-01"
 id: image-build
 one_line_purpose: Build and pin the OMP contributor image.
@@ -110,14 +110,15 @@ reads the published GitHub release asset digests and updates the pins. Renovate 
 that command daily after changing `OMP_VERSION`, then automerges only after
 repository checks pass. The merge triggers `publish-contribute.yml`; that workflow
 builds and executes both native architectures before updating its published index.
-Derived checksum automation for GitHub CLI, Node.js, tmux, and `requirements-ci.lock`
+Derived checksum automation for GitHub CLI, Node.js, and tmux
 runs in their respective Renovate branches via `node scripts/update-gh-pins.mjs`,
-`node scripts/update-node-pins.mjs`, `node scripts/update-tmux-pins.mjs`, and
-`scripts/update-requirements-ci-hashes.mjs`.
+`node scripts/update-node-pins.mjs`, and `node scripts/update-tmux-pins.mjs`.
 Those post-upgrade tasks only run under a self-hosted Renovate that allowlists
 them, and the organisation runner and the hosted app that also push these
-branches do not. For `requirements-ci.lock` the pull request itself is the
-backstop: `.github/workflows/renovate-hashes.yml` resolves dependencies and hashes on
+branches do not. `requirements-ci.lock` has no post-upgrade task at all: its
+recompile needs `uv`, which the Renovate container does not provide. The pull
+request itself is the only path:
+`.github/workflows/renovate-hashes.yml` resolves dependencies and hashes on
 any pull request that Renovate (`renovate[bot]` or `mergeraptor[bot]`) opens
 and pushes from a `renovate/*` branch of this repository and that touches the
 lockfile, pushes the result onto the branch, and dispatches `validate` on the
