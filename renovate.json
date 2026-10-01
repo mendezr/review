@@ -1,6 +1,5 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "requirements-ci.lock has no postUpgradeTasks entry on purpose. Recompiling it needs `uv` on the post-upgrade PATH and the Renovate container does not provide it, so the task could only ever fail and record an artifact error on every PyPI bump. .github/workflows/renovate-hashes.yml repairs the branch on the pull request instead, where setup-uv installs uv; that is the only path that lands the resolution. Its commits are authored by github-actions[bot], listed in gitIgnoredAuthors below so Renovate does not read the repair as a manual edit and stop rebasing the branch. .github/workflows/renovate.yml still allowlists `node scripts/update-requirements-ci-hashes.mjs`; with no rule declaring it the entry matches nothing and is inert.",
   "extends": [
     "local>projectbluefin/renovate-config"
   ],
@@ -63,7 +62,7 @@
       "versioningTemplate": "loose"
     },
     {
-      "description": "Track requirements-ci.lock package versions. This lockfile deliberately has no postUpgradeTasks entry (see the top-level description); .github/workflows/renovate-hashes.yml recompiles it on the pull request, resolving transitive dependencies and sha256 hashes from PyPI.",
+      "description": "Track requirements-ci.lock package versions; the post-upgrade task recompiles the lockfile, resolving transitive dependencies and sha256 hashes from PyPI.",
       "customType": "regex",
       "managerFilePatterns": [
         "/(^|/)requirements-ci\\.lock$/"
@@ -188,6 +187,21 @@
         ],
         "fileFilters": [
           "image/contribute/Containerfile"
+        ],
+        "executionMode": "branch"
+      }
+    },
+    {
+      "description": "Recompile requirements-ci.lock when managed PyPI package versions change: the task resolves the bumped pins with `uv`, adding any newly required transitive dependencies and regenerating sha256 hashes. The Renovate full image ships `uv` and Node.js, so the command runs there, but only a self-hosted Renovate that allowlists it does (.github/workflows/renovate.yml); the organisation runner and the hosted app push the version bump alone, and .github/workflows/renovate-hashes.yml repairs the branch on the pull request. The github-actions[bot] author above is that repair, which Renovate must not read as a manual edit.",
+      "matchDatasources": [
+        "pypi"
+      ],
+      "postUpgradeTasks": {
+        "commands": [
+          "node scripts/update-requirements-ci-hashes.mjs"
+        ],
+        "fileFilters": [
+          "requirements-ci.lock"
         ],
         "executionMode": "branch"
       }

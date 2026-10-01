@@ -233,7 +233,7 @@ test("syncTmuxPins updates contributor image from tmux-builds release", async (t
 // Renovate configuration & workflow contracts
 // --------------------------------------------------------------------------
 
-test("Renovate configuration tracks GH, Node, and tmux with postUpgradeTasks, and requirements-ci without one", async () => {
+test("Renovate configuration tracks GH, Node, tmux, and requirements-ci with postUpgradeTasks", async () => {
 	const config = JSON.parse(await readFile("renovate.json", "utf8"));
 
 	// Check customManagers
@@ -276,11 +276,9 @@ test("Renovate configuration tracks GH, Node, and tmux with postUpgradeTasks, an
 	assert.deepEqual(tmuxRule.postUpgradeTasks.fileFilters, ["image/contribute/Containerfile"]);
 
 	const pypiRule = config.packageRules.find((r) => r.matchDatasources?.includes("pypi"));
-	// Deliberately none: recompiling requirements-ci.lock needs `uv`, which the
-	// Renovate container lacks, so a post-upgrade task here could only fail and
-	// record an artifact error on every PyPI bump. renovate-hashes.yml repairs
-	// the branch on the pull request instead.
-	assert.equal(pypiRule, undefined, "PyPI must have no postUpgradeTasks packageRule");
+	assert.ok(pypiRule, "PyPI needs a packageRule with postUpgradeTasks");
+	assert.deepEqual(pypiRule.postUpgradeTasks.commands, ["node scripts/update-requirements-ci-hashes.mjs"]);
+	assert.deepEqual(pypiRule.postUpgradeTasks.fileFilters, ["requirements-ci.lock"]);
 
 	// Check Renovate workflow allows all update commands
 	const renovateWorkflow = await readFile(".github/workflows/renovate.yml", "utf8");
@@ -288,10 +286,7 @@ test("Renovate configuration tracks GH, Node, and tmux with postUpgradeTasks, an
 	assert.match(renovateWorkflow, /update-gh-pins/);
 	assert.match(renovateWorkflow, /update-node-pins/);
 	assert.match(renovateWorkflow, /update-tmux-pins/);
-	// ... and keeps allowlisting `update-requirements-ci-hashes` only as a
-	// vestige: renovate.json declares no PyPI post-upgrade task, so Renovate
-	// never compiles that command and the entry matches nothing. Removing it
-	// needs a `workflows`-permission push.
+	assert.match(renovateWorkflow, /update-requirements-ci-hashes/);
 
 	const workflow = await readFile(".github/workflows/publish-contribute.yml", "utf8");
 	assert.match(workflow, /push:\n    branches:\n      - main/);
