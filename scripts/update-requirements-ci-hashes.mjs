@@ -15,8 +15,13 @@ const LOCKFILE = "requirements-ci.lock";
 // URL, `--index-url`'s argument, a `@` direct reference) past this parser and
 // into uv's requirements file. Anything outside that charset fails to match and
 // the line is refused rather than re-emitted.
+// The name follows PEP 508: it must start and end with an alphanumeric, so
+// `.`, `_` and `-` are only ever interior. Without those anchors a bare
+// `[a-zA-Z0-9._-]+` accepts an option as a name and re-emits option-shaped
+// lines (`--index-url==1.0`, `-r==1.0`, `--find-links==1.0`) into the
+// requirements file the resolver reads.
 const REQUIREMENT_PATTERN =
-	/^(?<name>[a-zA-Z0-9._-]+)(?<extras>\[[^\]\n]*\])?\s*==\s*(?<version>[0-9][a-zA-Z0-9._!*+-]*)(?<marker>\s*;[a-zA-Z0-9._'"()<>=!~+ \t-]*)?$/;
+	/^(?<name>[a-zA-Z0-9](?:[a-zA-Z0-9._-]*[a-zA-Z0-9])?)(?<extras>\[[^\]\n]*\])?\s*==\s*(?<version>[0-9][a-zA-Z0-9._!*+-]*)(?<marker>\s*;[a-zA-Z0-9._'"()<>=!~+ \t-]*)?$/;
 
 // Parses one requirement line into the PyPI lookup key and the spec to re-emit.
 // `spec` is rebuilt rather than reused verbatim so the rewrite keeps extras and

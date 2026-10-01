@@ -7,7 +7,8 @@ import { assertAllInputsResolved, compilerInput, syncRequirementsCiHashes } from
 
 test("compiler accepts only pins, extras, markers, comments, and hashes", () => {
 	assert.equal(compilerInput('coverage[toml]==7.6.0 ; python_version >= "3.11" \\\n    --hash=sha256:' + "a".repeat(64) + '\n    # via test\n'), 'coverage[toml]==7.6.0 ; python_version >= "3.11"\n');
-	for (const line of ["--index-url https://evil.example", "-r other.txt", "./package", "pkg @ https://evil.example/pkg.whl", "foo==1.0 invalid", "foo[https://evil.example]==1.0", 'foo==1.0 ; os_name=="x" --index-url https://evil.example', 'foo==1.0 ; os_name=="x" @ https://evil.example/pkg.whl', "foo==1.0 ; os_name=='x' -r /etc/passwd"]) {
+	assert.equal(compilerInput("a==1.0\nZope.Interface==7.0\nruamel-yaml-clib==0.2.8\n"), "a==1.0\nZope.Interface==7.0\nruamel-yaml-clib==0.2.8\n");
+	for (const line of ["--index-url https://evil.example", "-r other.txt", "./package", "pkg @ https://evil.example/pkg.whl", "foo==1.0 invalid", "foo[https://evil.example]==1.0", 'foo==1.0 ; os_name=="x" --index-url https://evil.example', 'foo==1.0 ; os_name=="x" @ https://evil.example/pkg.whl', "foo==1.0 ; os_name=='x' -r /etc/passwd", "--index-url==1.0", "-r==1.0", "-e.==1.0", "--find-links==1.0", "foo-==1.0", ".foo==1.0", "_foo==1.0", "foo.==1.0"]) {
 		assert.throws(() => compilerInput(`foo==1.0\n${line}\n`), /cannot parse/);
 	}
 	assert.throws(() => compilerInput("# empty\n"), /no pinned requirements/);
