@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { compilerInput, syncRequirementsCiHashes } from "../scripts/update-requirements-ci-hashes.mjs";
+import { assertAllInputsResolved, compilerInput, syncRequirementsCiHashes } from "../scripts/update-requirements-ci-hashes.mjs";
 
 test("compiler accepts only pins, extras, markers, comments, and hashes", () => {
 	assert.equal(compilerInput('coverage[toml]==7.6.0 ; python_version >= "3.11" \\\n    --hash=sha256:' + "a".repeat(64) + '\n    # via test\n'), 'coverage[toml]==7.6.0 ; python_version >= "3.11"\n');
@@ -11,6 +11,24 @@ test("compiler accepts only pins, extras, markers, comments, and hashes", () => 
 		assert.throws(() => compilerInput(`foo==1.0\n${line}\n`), /cannot parse/);
 	}
 	assert.throws(() => compilerInput("# empty\n"), /no pinned requirements/);
+});
+
+test("a pin missing from the compiled output fails instead of being dropped", () => {
+	const hash = `    --hash=sha256:${"a".repeat(64)}\n`;
+	// uv without --universal resolves for the runner, so a false marker leaves
+	// the package out of the output entirely.
+	assert.throws(
+		() => assertAllInputsResolved(
+			'foo==1.0.0\ntomli==2.0.1 ; python_version < "3.11"\n',
+			`foo==1.0.0 \\\n${hash}`,
+		),
+		/resolution dropped pinned package\(s\) tomli/,
+	);
+	// PEP 503 says `Zope.Interface` and `zope-interface` are the same project.
+	assert.doesNotThrow(() => assertAllInputsResolved(
+		"Zope.Interface==7.0\n",
+		`zope-interface==7.0 \\\n${hash}`,
+	));
 });
 
 test("compiler failure leaves the lock intact and removes temporary inputs", async () => {

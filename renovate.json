@@ -62,7 +62,7 @@
       "versioningTemplate": "loose"
     },
     {
-      "description": "Track requirements-ci.lock package versions; the post-upgrade task regenerates sha256 hashes from PyPI metadata.",
+      "description": "Track requirements-ci.lock package versions; the post-upgrade task recompiles the lockfile, resolving transitive dependencies and sha256 hashes from PyPI.",
       "customType": "regex",
       "managerFilePatterns": [
         "/(^|/)requirements-ci\\.lock$/"
@@ -192,7 +192,7 @@
       }
     },
     {
-      "description": "Regenerate requirements-ci.lock sha256 hashes when managed PyPI package versions change. Only a self-hosted Renovate that allowlists this command runs it (.github/workflows/renovate.yml); the organisation runner and the hosted app push the version bump alone, and .github/workflows/renovate-hashes.yml repairs the branch on the pull request. The github-actions[bot] author above is that repair, which Renovate must not read as a manual edit.",
+      "description": "Recompile requirements-ci.lock (transitive dependencies and sha256 hashes) when managed PyPI package versions change. This command needs `uv` on the post-upgrade PATH, which the Renovate container does not provide, so under the self-hosted Renovate that allowlists it (.github/workflows/renovate.yml) the task fails and leaves the bump alone. The organisation runner and the hosted app do not run it either. In every case .github/workflows/renovate-hashes.yml repairs the branch on the pull request, where setup-uv installs uv; that repair is the path that actually lands the resolution. The github-actions[bot] author above is that repair, which Renovate must not read as a manual edit.",
       "matchDatasources": [
         "pypi"
       ],

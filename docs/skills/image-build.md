@@ -1,7 +1,7 @@
 ---
 name: image-build
 version: "3.8"
-last_updated: "2026-09-19"
+last_updated: "2026-10-01"
 id: image-build
 one_line_purpose: Build and pin the OMP contributor image.
 entry_point: docs/skills/image-build.md
@@ -124,12 +124,16 @@ lockfile, pushes the result onto the branch, and dispatches `validate` on the
 refreshed commit. It is a `pull_request_target` workflow: the workflow file and
 the script both come from `main`, the head contributes only its lockfile, and
 nothing from the pull request head is executed. The synchronizer requires `uv`
-on the post-upgrade runner's PATH; the repair job installs it with `setup-uv`.
+on its PATH; the repair job installs it with `setup-uv`, while the Renovate
+container does not ship it, so the self-hosted post-upgrade task fails there and
+the repair job is what actually lands the resolution.
 It compiles sanitized PyPI pins with Python 3.13 and generated hashes, retaining
 the bumped versions while adding newly required transitive dependencies. Only
 wheels are eligible, project configuration is ignored, and includes, URLs,
 local paths, and index directives in the head lockfile are rejected before
-resolution. Existing incompatible pins fail resolution without rewriting the lock.
+resolution. Existing incompatible pins fail resolution without rewriting the lock,
+as does a pin that the platform-specific resolution drops because an environment
+marker excluded it.
 The OMP, GitHub CLI, Node.js, and tmux synchronizers are configuration over one
 shared implementation in `scripts/lib/release-pins.mjs`: change the pin-rewriting
 or release-lookup behaviour there, not in four places.
