@@ -63,7 +63,7 @@
       "versioningTemplate": "loose"
     },
     {
-      "description": "Track requirements-ci.lock package versions; the post-upgrade task recompiles the lockfile, resolving transitive dependencies and sha256 hashes from PyPI.",
+      "description": "Track requirements-ci.lock package versions. This lockfile deliberately has no postUpgradeTasks entry (see the top-level description); .github/workflows/renovate-hashes.yml recompiles it on the pull request, resolving transitive dependencies and sha256 hashes from PyPI.",
       "customType": "regex",
       "managerFilePatterns": [
         "/(^|/)requirements-ci\\.lock$/"

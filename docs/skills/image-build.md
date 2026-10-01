@@ -126,8 +126,8 @@ refreshed commit. It is a `pull_request_target` workflow: the workflow file and
 the script both come from `main`, the head contributes only its lockfile, and
 nothing from the pull request head is executed. The synchronizer requires `uv`
 on its PATH; the repair job installs it with `setup-uv`, while the Renovate
-container does not ship it, so the self-hosted post-upgrade task fails there and
-the repair job is what actually lands the resolution.
+container does not ship it, which is why no post-upgrade task is configured for
+the lockfile and the repair job is what actually lands the resolution.
 It compiles sanitized PyPI pins with Python 3.13 and generated hashes, retaining
 the bumped versions while adding newly required transitive dependencies. Only
 wheels are eligible, project configuration is ignored, and includes, URLs,
