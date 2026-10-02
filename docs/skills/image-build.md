@@ -124,11 +124,15 @@ lockfile, pushes the result onto the branch, and dispatches `validate` on the
 refreshed commit. It is a `pull_request_target` workflow: the workflow file and
 the script both come from `main`, the head contributes only its lockfile, and
 nothing from the pull request head is executed. The CI lock synchronizer requires
-`uv` on `PATH` and compiles the existing pins for Python 3.13, adding newly
-introduced transitive dependencies rather than only replacing hashes. It rejects
+`uv` on `PATH`. It compiles the existing pins for Python 3.13, adding newly
+introduced transitive dependencies rather than only replacing hashes. Entries
+without a `# via` annotation are the requirements; annotated ones are replayed as
+`--constraint` pins, so a transitive dependency nothing needs any more leaves the
+lock instead of pinning itself there forever. It rejects
 non-pinned requirement directives and disables uv config discovery and source
 builds so PR data cannot select executable build hooks. Conflicting pins fail
-resolution without changing the lockfile. That `uv` requirement also applies to
+resolution without changing the lockfile. A missing `uv` fails with a message
+naming it as the prerequisite. That `uv` requirement also applies to
 the same command run as a Renovate post-upgrade task; where the Renovate runtime
 has no `uv` the task fails and `renovate-hashes.yml` is the repair path.
 The OMP, GitHub CLI, Node.js, and tmux synchronizers are configuration over one
