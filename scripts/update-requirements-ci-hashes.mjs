@@ -10,6 +10,42 @@ const ROOT_PACKAGES = ["pre-commit"];
 const REQUIREMENT_PATTERN =
 	/^(?<name>[a-zA-Z0-9._-]+)(?<extras>\[[^\]\n]*\])?\s*==\s*(?<version>[0-9][a-zA-Z0-9._!*+-]*)(?<marker>\s*;.*)?$/;
 
+// uv lists the constraints file among each package's `# via` sources. That
+// source is this lockfile itself, fed back in as pins, so persisting it would
+// leak a temp path and make the committed lock differ from what a rerun
+// produces. Drop those entries and restore uv's one-source formatting.
+export function stripConstraintAnnotations(output, constraints) {
+	const lines = output.split("\n");
+	const result = [];
+	for (let index = 0; index < lines.length; index += 1) {
+		const via = lines[index].match(/^(?<indent>\s*)# via(?: (?<inline>.+))?$/);
+		if (!via) {
+			result.push(lines[index]);
+			continue;
+		}
+		const { indent, inline } = via.groups;
+		const sources = [];
+		if (inline) sources.push(inline);
+		else {
+			while (index + 1 < lines.length) {
+				const source = lines[index + 1].match(/^\s*#   (.+)$/);
+				if (!source) break;
+				sources.push(source[1]);
+				index += 1;
+			}
+		}
+		const kept = sources.filter((source) => source !== `-c ${constraints}`);
+		if (kept.length === 0) continue;
+		if (kept.length === 1) {
+			result.push(`${indent}# via ${kept[0]}`);
+			continue;
+		}
+		result.push(`${indent}# via`);
+		for (const source of kept) result.push(`${indent}#   ${source}`);
+	}
+	return result.join("\n");
+}
+
 export function parseRequirement(line) {
 	const spec = line.replace(/\s*\\\s*$/, "").trim();
 	const match = spec.match(REQUIREMENT_PATTERN);
@@ -66,8 +102,9 @@ export async function updateLockfileContent(source, runImpl = spawnSync) {
 			throw new Error(`${LOCKFILE}: dependency resolution failed: ${result.stderr}`);
 		}
 		if (!result.stdout.trim()) throw new Error(`${LOCKFILE}: resolver produced an empty lockfile`);
-		// uv annotates constraint sources; never persist a random temp path.
-		return `${header.join("\n")}\n${result.stdout.replaceAll(constraints, LOCKFILE)}`;
+		// uv annotates constraint sources; that annotation names this very
+		// lockfile by its temp path, so it never reaches the committed file.
+		return `${header.join("\n")}\n${stripConstraintAnnotations(result.stdout, constraints)}`;
 	} finally {
 		await rm(directory, { recursive: true, force: true });
 	}
