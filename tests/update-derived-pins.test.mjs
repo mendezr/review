@@ -278,6 +278,9 @@ foo==1.0.0 \\
 		assert.equal(command, "uv");
 		assert.ok(args.includes("--no-config"));
 		assert.ok(args.includes("--only-binary"));
+		// Annotations stay on so the refresh does not rewrite every block of
+		// the lockfile to drop its existing `# via` lines.
+		assert.ok(!args.includes("--no-annotate"));
 		assert.equal(options.input, "foo==1.0.0\n");
 		return { status: 0, stdout: `foo==1.0.0 \\\n    --hash=sha256:${X64}\nnew-dep==2.0.0 \\\n    --hash=sha256:${ARM64}\n` };
 	});
@@ -311,15 +314,17 @@ coverage[toml]==7.6.0 \\
 	assert.match(extrasUpdated, /^coverage\[toml\]==7\.6\.0 \\$/m);
 	assert.ok(inputs[0].includes("coverage[toml]==7.6.0\n"));
 
-	// The marker decides whether the package installs at all, so re-emitting
-	// the requirement without it silently changes what CI installs.
+	// The marker decides whether the package installs at all, so dropping it
+	// before handing the requirement to the resolver silently changes what CI
+	// installs. uv owns what survives resolution for the target Python, so the
+	// guarantee this script can make is that the marker reaches it intact.
 	const withMarker = `# Header
 tomli==2.0.1 ; python_version < "3.11" \\
     --hash=sha256:${"3".repeat(64)}
     # via pytest
 `;
-	const markerUpdated = await updateLockfileContent(withMarker, runImpl);
-	assert.match(markerUpdated, /^tomli==2\.0\.1 ; python_version < "3\.11" \\$/m);
+	await updateLockfileContent(withMarker, runImpl);
+	assert.equal(inputs[1], `tomli==2.0.1 ; python_version < "3.11"\n`);
 
 	// Anything this cannot parse must stop the rewrite rather than be omitted
 	// from it.

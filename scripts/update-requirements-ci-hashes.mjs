@@ -39,7 +39,10 @@ export async function updateLockfileContent(source, runImpl = spawnSync) {
 		[
 			"--no-config", "pip", "compile", "-", "--generate-hashes",
 			"--python-version", "3.13", "--only-binary", ":all:",
-			"--default-index", "https://pypi.org/simple", "--no-header", "--no-annotate",
+			// Annotations stay on: the lockfile already carries the `# via`
+			// lines, and --no-annotate would rewrite every block of the file on
+			// the first run for no gain.
+			"--default-index", "https://pypi.org/simple", "--no-header",
 		],
 		{
 			input: `${requirements.join("\n")}\n`,

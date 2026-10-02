@@ -1,7 +1,7 @@
 ---
 name: image-build
 version: "3.8"
-last_updated: "2026-09-19"
+last_updated: "2026-10-02"
 id: image-build
 one_line_purpose: Build and pin the OMP contributor image.
 entry_point: docs/skills/image-build.md
@@ -128,7 +128,9 @@ nothing from the pull request head is executed. The CI lock synchronizer require
 introduced transitive dependencies rather than only replacing hashes. It rejects
 non-pinned requirement directives and disables uv config discovery and source
 builds so PR data cannot select executable build hooks. Conflicting pins fail
-resolution without changing the lockfile.
+resolution without changing the lockfile. That `uv` requirement also applies to
+the same command run as a Renovate post-upgrade task; where the Renovate runtime
+has no `uv` the task fails and `renovate-hashes.yml` is the repair path.
 The OMP, GitHub CLI, Node.js, and tmux synchronizers are configuration over one
 shared implementation in `scripts/lib/release-pins.mjs`: change the pin-rewriting
 or release-lookup behaviour there, not in four places.
