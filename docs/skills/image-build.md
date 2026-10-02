@@ -124,8 +124,11 @@ lockfile, pushes the result onto the branch, and dispatches `validate` on the
 refreshed commit. It is a `pull_request_target` workflow: the workflow file and
 the script both come from `main`, the head contributes only its lockfile, and
 nothing from the pull request head is executed. The CI lock synchronizer requires
-`uv` on `PATH` and compiles the trusted CI root (`pre-commit`, declared in the
-script) for Python 3.13. Its version comes from the lockfile; all existing pins
+`uv` on `PATH` and compiles the trusted CI roots (`pre-commit` and `uv` itself,
+declared in the script) for Python 3.13. `uv` is a root so that the workflows
+installing the compiler can take it from the hashed lock with
+`pip install --require-hashes` instead of an unverified PyPI download.
+Versions come from the lockfile; all existing pins
 are sanitized constraints, not additional roots. Newly needed transitive
 packages gain hashes and unused pins disappear, regardless of their `# via`
 annotations. Add future direct CI requirements to the script's root list,

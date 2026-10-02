@@ -6,7 +6,10 @@ import { pathToFileURL } from "node:url";
 
 const LOCKFILE = "requirements-ci.lock";
 // CI installs pre-commit; # via comments and unannotated entries are not roots.
-const ROOT_PACKAGES = ["pre-commit"];
+// uv is a root as well: the workflows that recompile this lock need the
+// compiler itself, and pinning it here is what lets them install it with
+// --require-hashes instead of an unverified PyPI download.
+const ROOT_PACKAGES = ["pre-commit", "uv"];
 const REQUIREMENT_PATTERN =
 	/^(?<name>[a-zA-Z0-9._-]+)(?<extras>\[[^\]\n]*\])?\s*==\s*(?<version>[0-9][a-zA-Z0-9._!*+-]*)(?<marker>\s*;.*)?$/;
 

@@ -241,7 +241,7 @@ test("syncTmuxPins updates contributor image from tmux-builds release", async (t
 test("resolver failures leave the lockfile untouched", async () => {
 	const root = await mkdtemp(join(tmpdir(), "ci-lock-"));
 	const path = join(root, "requirements-ci.lock");
-	const source = "pre-commit==2.0.0\n";
+	const source = "pre-commit==2.0.0\nuv==0.1.0\n";
 	try {
 		await writeFile(path, source);
 		await assert.rejects(
@@ -262,7 +262,7 @@ test("lockfile data cannot supply resolver options or executable requirements", 
 		);
 	}
 	await assert.rejects(
-		() => updateLockfileContent("pre-commit==1.0.0\n", () => ({ status: 0, stdout: "" })),
+		() => updateLockfileContent("pre-commit==1.0.0\nuv==0.1.0\n", () => ({ status: 0, stdout: "" })),
 		/empty lockfile/,
 	);
 });
@@ -272,6 +272,8 @@ test("updateLockfileContent recompiles roots with other pins as constraints", as
 # Compiled via: uv pip compile
 pre-commit==1.0.0 \\
     --hash=sha256:${"1".repeat(64)}
+uv==0.1.0 \\
+    --hash=sha256:${"5".repeat(64)}
 obsolete==9.0.0
     # via pre-commit
 unannotated==8.0.0
@@ -283,7 +285,8 @@ unannotated==8.0.0
 		// Annotations stay on so the refresh does not rewrite every block of
 		// the lockfile to drop its existing `# via` lines.
 		assert.ok(!args.includes("--no-annotate"));
-		assert.equal(options.input, "pre-commit==1.0.0\n");
+		// Roots are emitted in the script's declared order, not the lockfile's.
+		assert.equal(options.input, "pre-commit==1.0.0\nuv==0.1.0\n");
 		return { status: 0, stdout: `pre-commit==1.0.0 \\\n    --hash=sha256:${X64}\nnew-dep==2.0.0 \\\n    --hash=sha256:${ARM64}\n` };
 	});
 
@@ -299,8 +302,8 @@ test("constraints retain markers, strip extras, and cannot become root requireme
 	let constraintsPath;
 	const runImpl = async (command, args, options) => {
 		constraintsPath = args[args.indexOf("--constraint") + 1];
-		assert.equal(await readFile(constraintsPath, "utf8"), 'pre-commit==1.0.0\ncoverage==7.6.0\ntomli==2.0.1 ; python_version < "3.11"\n');
-		assert.equal(options.input, "pre-commit==1.0.0\n");
+		assert.equal(await readFile(constraintsPath, "utf8"), 'pre-commit==1.0.0\nuv==0.1.0\ncoverage==7.6.0\ntomli==2.0.1 ; python_version < "3.11"\n');
+		assert.equal(options.input, "pre-commit==1.0.0\nuv==0.1.0\n");
 		return { status: 0, stdout: options.input.replaceAll("\n", ` \\\n    --hash=sha256:${X64}\n`) };
 	};
 
@@ -311,6 +314,8 @@ test("constraints retain markers, strip extras, and cannot become root requireme
 pre-commit==1.0.0 \\
     --hash=sha256:${"1".repeat(64)}
     # via bar
+uv==0.1.0 \\
+    --hash=sha256:${"5".repeat(64)}
 coverage[toml]==7.6.0 \\
     --hash=sha256:${"2".repeat(64)}
     # via pytest-cov
@@ -321,13 +326,15 @@ tomli==2.0.1 ; python_version < "3.11" \\
 	await updateLockfileContent(withExtras, runImpl);
 	await assert.rejects(() => readFile(constraintsPath), /ENOENT/);
 	await assert.rejects(() => updateLockfileContent("unannotated==1.0.0\n"), /missing CI root pre-commit/);
+	// The compiler is a root too, so a lock without it cannot be recompiled.
+	await assert.rejects(() => updateLockfileContent("pre-commit==1.0.0\n"), /missing CI root uv/);
 
 	// Anything this cannot parse must stop the rewrite rather than be omitted
 	// from it.
 	await assert.rejects(
 		() =>
 			updateLockfileContent(
-				`# Header\nfoo==1.0.0 unexpected-token \\\n    --hash=sha256:${"4".repeat(64)}\n`,
+				`# Header\npre-commit==1.0.0\nuv==0.1.0\nfoo==1.0.0 unexpected-token \\\n    --hash=sha256:${"4".repeat(64)}\n`,
 				runImpl,
 			),
 		/cannot parse requirement line/,

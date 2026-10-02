@@ -67,3 +67,12 @@ test("real uv prunes obsolete pins instead of treating them as dependencies", {
 		/dependency resolution failed/,
 	);
 });
+
+// The repair job recompiles the lock while holding contents: write on a
+// pull_request_target event, so its compiler decides what the hashed lock says.
+// Pinning uv here with hashes is what lets those jobs install the compiler with
+// `pip install --require-hashes` instead of an unverified PyPI download.
+test("uv is pinned with hashes so the compiler itself is verifiable", async () => {
+	const lock = await readFile("requirements-ci.lock", "utf8");
+	assert.match(lock, /^uv==[0-9][^\s]*\s*\\\n(?:\s+--hash=sha256:[0-9a-f]{64})/m);
+});
