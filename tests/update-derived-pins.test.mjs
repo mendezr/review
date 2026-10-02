@@ -23,7 +23,6 @@ import {
 } from "../scripts/update-tmux-pins.mjs";
 
 import {
-	fetchPackageHashes,
 	syncRequirementsCiHashes,
 	updateLockfileContent,
 } from "../scripts/update-requirements-ci-hashes.mjs";
@@ -239,60 +238,62 @@ test("syncTmuxPins updates contributor image from tmux-builds release", async (t
 // PyPI (requirements-ci.lock) contracts
 // --------------------------------------------------------------------------
 
-test("fetchPackageHashes extracts and sorts unique sha256 digests from PyPI", async () => {
-	const mockPyPiPayload = {
-		urls: [
-			{ digests: { sha256: X64 } },
-			{ digests: { sha256: ARM64 } },
-			{ digests: { sha256: X64 } },
-		],
-	};
-	const hashes = await fetchPackageHashes("sample-pkg", "1.0.0", async () => response(mockPyPiPayload));
-	assert.deepEqual(hashes, [X64, ARM64].sort());
+test("resolver failures leave the lockfile untouched", async () => {
+	const root = await mkdtemp(join(tmpdir(), "ci-lock-"));
+	const path = join(root, "requirements-ci.lock");
+	const source = "foo==2.0.0\n";
+	try {
+		await writeFile(path, source);
+		await assert.rejects(
+			() => syncRequirementsCiHashes({ root, runImpl: () => ({ status: 1, stderr: "conflicting pins" }) }),
+			/dependency resolution failed/,
+		);
+		assert.equal(await readFile(path, "utf8"), source);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
 
+test("lockfile data cannot supply resolver options or executable requirements", async () => {
+	for (const directive of ["--index-url https://example.com", "-r other.txt", "-e .", "foo @ file:///tmp/foo.whl"]) {
+		await assert.rejects(
+			() => updateLockfileContent(`${directive}\n`, () => assert.fail("must reject before invoking uv")),
+			/cannot parse requirement line/,
+		);
+	}
 	await assert.rejects(
-		() => fetchPackageHashes("sample-pkg", "1.0.0", async () => response({}, { status: 404, statusText: "Not Found" })),
-		/PyPI metadata lookup failed/,
-	);
-	await assert.rejects(
-		() => fetchPackageHashes("sample-pkg", "1.0.0", async () => response({ urls: [] })),
-		/No release files found on PyPI/,
+		() => updateLockfileContent("foo==1.0.0\n", () => ({ status: 0, stdout: "" })),
+		/empty lockfile/,
 	);
 });
 
-test("updateLockfileContent regenerates hashes and preserves comments", async () => {
+test("updateLockfileContent recompiles pins and includes new transitive dependencies", async () => {
 	const initial = `# Header comment
 # Compiled via: uv pip compile
 foo==1.0.0 \\
     --hash=sha256:${"1".repeat(64)}
     # via bar
 `;
-	const updated = await updateLockfileContent(initial, async (url) => {
-		assert.match(String(url), /pypi\.org\/pypi\/foo\/1\.0\.0\/json/);
-		return response({
-			urls: [
-				{ digests: { sha256: X64 } },
-				{ digests: { sha256: ARM64 } },
-			],
-		});
+	const updated = await updateLockfileContent(initial, (command, args, options) => {
+		assert.equal(command, "uv");
+		assert.ok(args.includes("--no-config"));
+		assert.ok(args.includes("--only-binary"));
+		assert.equal(options.input, "foo==1.0.0\n");
+		return { status: 0, stdout: `foo==1.0.0 \\\n    --hash=sha256:${X64}\nnew-dep==2.0.0 \\\n    --hash=sha256:${ARM64}\n` };
 	});
 
 	assert.match(updated, /^# Header comment/m);
 	assert.match(updated, /^# Compiled via: uv pip compile/m);
 	assert.match(updated, /^foo==1\.0\.0 \\$/m);
-	assert.match(updated, new RegExp(`^    --hash=sha256:${[X64, ARM64].sort()[0]} \\\\$`, "m"));
-	assert.match(updated, new RegExp(`^    --hash=sha256:${[X64, ARM64].sort()[1]}$`, "m"));
-	assert.match(updated, /^    # via bar$/m);
+	assert.match(updated, /^new-dep==2\.0\.0 \\$/m);
+	assert.match(updated, new RegExp(`^    --hash=sha256:${ARM64}$`, "m"));
 });
 
 test("updateLockfileContent keeps extras and environment markers, and refuses unparseable lines", async () => {
-	const hashPayload = response({
-		urls: [{ digests: { sha256: X64 } }, { digests: { sha256: ARM64 } }],
-	});
-	const lookups = [];
-	const fetchImpl = async (url) => {
-		lookups.push(String(url));
-		return hashPayload;
+	const inputs = [];
+	const runImpl = (command, args, options) => {
+		inputs.push(options.input);
+		return { status: 0, stdout: options.input.replaceAll("\n", ` \\\n    --hash=sha256:${X64}\n`) };
 	};
 
 	// An extras requirement does not start with `name==`, so a splitter that
@@ -306,11 +307,9 @@ coverage[toml]==7.6.0 \\
     --hash=sha256:${"2".repeat(64)}
     # via pytest-cov
 `;
-	const extrasUpdated = await updateLockfileContent(withExtras, fetchImpl);
+	const extrasUpdated = await updateLockfileContent(withExtras, runImpl);
 	assert.match(extrasUpdated, /^coverage\[toml\]==7\.6\.0 \\$/m);
-	assert.match(extrasUpdated, /^    # via pytest-cov$/m);
-	// PyPI is queried for the project, not for the extras selector.
-	assert.ok(lookups.some((url) => url.includes("/pypi/coverage/7.6.0/json")));
+	assert.ok(inputs[0].includes("coverage[toml]==7.6.0\n"));
 
 	// The marker decides whether the package installs at all, so re-emitting
 	// the requirement without it silently changes what CI installs.
@@ -319,7 +318,7 @@ tomli==2.0.1 ; python_version < "3.11" \\
     --hash=sha256:${"3".repeat(64)}
     # via pytest
 `;
-	const markerUpdated = await updateLockfileContent(withMarker, fetchImpl);
+	const markerUpdated = await updateLockfileContent(withMarker, runImpl);
 	assert.match(markerUpdated, /^tomli==2\.0\.1 ; python_version < "3\.11" \\$/m);
 
 	// Anything this cannot parse must stop the rewrite rather than be omitted
@@ -328,7 +327,7 @@ tomli==2.0.1 ; python_version < "3.11" \\
 		() =>
 			updateLockfileContent(
 				`# Header\nfoo==1.0.0 unexpected-token \\\n    --hash=sha256:${"4".repeat(64)}\n`,
-				fetchImpl,
+				runImpl,
 			),
 		/cannot parse requirement line/,
 	);
