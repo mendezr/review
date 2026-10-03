@@ -130,7 +130,7 @@ jobs:
           python-version: '3.x'
 
       - name: Install the lockfile compiler
-        run: python -m pip install uv
+        run: python -m pip install --require-hashes -r "${GITHUB_WORKSPACE}/base/requirements-ci.lock"
 
       - name: Recompile requirements-ci.lock with hashes
         id: refresh
