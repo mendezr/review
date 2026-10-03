@@ -11,7 +11,7 @@ const LOCKFILE = "requirements-ci.lock";
 // --require-hashes instead of an unverified PyPI download.
 const ROOT_PACKAGES = ["pre-commit", "uv"];
 const REQUIREMENT_PATTERN =
-	/^(?<name>[a-zA-Z0-9._-]+)(?<extras>\[[^\]\n]*\])?\s*==\s*(?<version>[0-9][a-zA-Z0-9._!*+-]*)(?<marker>\s*;.*)?$/;
+	/^(?<name>[a-zA-Z0-9][a-zA-Z0-9._-]*)(?<extras>\[[^\]\n]*\])?\s*==\s*(?<version>[0-9][a-zA-Z0-9._!*+-]*)(?<marker>\s*;.*)?$/;
 
 // uv lists the constraints file among each package's `# via` sources. That
 // source is this lockfile itself, fed back in as pins, so persisting it would

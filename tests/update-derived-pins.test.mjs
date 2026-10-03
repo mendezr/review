@@ -255,7 +255,7 @@ test("resolver failures leave the lockfile untouched", async () => {
 });
 
 test("lockfile data cannot supply resolver options or executable requirements", async () => {
-	for (const directive of ["--index-url https://example.com", "-r other.txt", "-e .", "foo @ file:///tmp/foo.whl"]) {
+	for (const directive of ["--index-url https://example.com", "-r other.txt", "-e .", "foo @ file:///tmp/foo.whl", "--find-links==1", "-c==1", "-r==1"]) {
 		await assert.rejects(
 			() => updateLockfileContent(`${directive}\n`, () => assert.fail("must reject before invoking uv")),
 			/cannot parse requirement line/,
